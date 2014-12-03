@@ -29,6 +29,7 @@ import org.sireum.jawa.Center
 import org.sireum.jawa.alir.interProcedural.Callee
 import org.sireum.jawa.JawaProcedure
 import org.sireum.jawa.JawaCodeSource
+import java.util.regex.Pattern
 
 /**
  * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
@@ -356,7 +357,12 @@ class InterproceduralControlFlowGraph[Node <: CGNode] extends InterProceduralGra
 	    if(!calleeProc.checkLevel(Center.ResolveLevel.BODY)) calleeProc.resolveBody
 	    val body = calleeProc.getProcedureBody
 	    val rawcode = JawaCodeSource.getProcedureCodeWithoutFailing(calleeProc.getSignature)
-	    val codes = rawcode.split("\\r?\\n")
+	    val pattern = Pattern.compile("#\\w+\\.[^;#\\}]*")
+      val matcher = pattern.matcher(rawcode)
+      var codes = Set[String]()
+      while (matcher.find()) {
+    	    codes += matcher.group(0);
+    	}
 	    val cfg = JawaAlirInfoProvider.getCfg(calleeProc)
 	    var nodes = isetEmpty[Node]
 	    cfg.nodes map{
