@@ -56,9 +56,18 @@ class InterProceduralDataDependenceGraph[Node <: IDDGNode] extends InterProcedur
 	        case en : CGExitNode =>
 	          val owner = Center.getProcedureWithoutFailing(en.getOwner)
 	          val pnames = owner.getParamNames
+	          val ptyps = owner.getParamTypes
+	          var position = 0
 	          for(i <- 0 to pnames.size - 1){
-	            val n = addIDDGExitParamNode(en, i)
+	            val ptypName = ptyps(i).name
+	            val n = addIDDGExitParamNode(en, position)
 	            n.asInstanceOf[IDDGExitParamNode].paramName = pnames(i)
+	            if(ptypName == "double" || ptypName == "long"){
+	              position += 1
+	              val n = addIDDGExitParamNode(en, position)
+	              n.asInstanceOf[IDDGExitParamNode].paramName = pnames(i)
+	            }
+	            position += 1
 	          }
 	        case en : CGCenterNode =>
 	        case cn : CGCallNode =>

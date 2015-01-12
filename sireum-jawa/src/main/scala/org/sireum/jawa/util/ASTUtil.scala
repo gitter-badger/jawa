@@ -34,4 +34,14 @@ object ASTUtil {
     }
 	  argNames.toList
 	}
+	
+	def getCallSignature(cj : CallJump) : String = {
+	  cj.getValueAnnotation("signature") match {
+      case Some(s) => s match {
+        case ne : NameExp => ne.name.name
+        case _ => ""
+      }
+      case None => throw new RuntimeException("cannot found annotation 'signature' from: " + cj)
+    }
+	}
 }

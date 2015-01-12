@@ -13,6 +13,7 @@ import org.sireum.jawa._
 import org.sireum.jawa.alir._
 import org.sireum.jawa.alir.controlFlowGraph.CGNode
 import org.sireum.jawa.alir.controlFlowGraph.InterproceduralControlFlowGraph
+import org.sireum.jawa.util.Timer
 
 
 /**
@@ -39,12 +40,13 @@ class InterproceduralPointsToAnalysis {
   def pta(pag : PointerAssignmentGraph[PtaNode],
           cg : InterproceduralControlFlowGraph[CGNode],
           entryPoints : Set[JawaProcedure],
-          wholeProgram : Boolean) = {
+          wholeProgram : Boolean,
+          timerOpt : Option[Timer] = None) = {
     entryPoints.foreach{
 		  ep =>
 		    if(ep.isConcrete){
 		      if(!ep.hasProcedureBody)ep.resolveBody
-		    	doPTA(ep, pag, cg, wholeProgram)
+		    	doPTA(ep, pag, cg, wholeProgram, timerOpt)
 		    }
     }
   }
@@ -52,7 +54,8 @@ class InterproceduralPointsToAnalysis {
   def doPTA(ep : JawaProcedure,
             pag : PointerAssignmentGraph[PtaNode],
             cg : InterproceduralControlFlowGraph[CGNode],
-            wholeProgram : Boolean) : Unit = {
+            wholeProgram : Boolean,
+            timerOpt : Option[Timer] = None) : Unit = {
     val points = new PointsCollector().points(ep.getSignature, ep.getProcedureBody)
     val context : Context = new Context(pag.K_CONTEXT)
     pag.constructGraph(ep, points, context.copy)
@@ -71,10 +74,12 @@ class InterproceduralPointsToAnalysis {
   }
   
   def workListPropagation(pag : PointerAssignmentGraph[PtaNode],
-		  					 cg : InterproceduralControlFlowGraph[CGNode], wholeProgram : Boolean) : Unit = {
+		  					 cg : InterproceduralControlFlowGraph[CGNode], wholeProgram : Boolean,
+                 timerOpt : Option[Timer] = None) : Unit = {
     processStaticInfo(pag, cg, wholeProgram)
     while (!pag.worklist.isEmpty) {
       while (!pag.worklist.isEmpty) {
+        if(timerOpt.isDefined) timerOpt.get.isTimeOutAndThrow
       	val srcNode = pag.worklist.remove(0)
       	srcNode match{
       	  case ofbnr : PtaFieldBaseNodeR => // e.g. q = ofbnr.f; edge is ofbnr.f -> q

@@ -30,6 +30,7 @@ import org.sireum.jawa.alir.interProcedural.Callee
 import org.sireum.jawa.JawaProcedure
 import org.sireum.jawa.JawaCodeSource
 import java.util.regex.Pattern
+import org.sireum.jawa.util.ASTUtil
 
 /**
  * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
@@ -357,7 +358,7 @@ class InterproceduralControlFlowGraph[Node <: CGNode] extends InterProceduralGra
 	    if(!calleeProc.checkLevel(Center.ResolveLevel.BODY)) calleeProc.resolveBody
 	    val body = calleeProc.getProcedureBody
 	    val rawcode = JawaCodeSource.getProcedureCodeWithoutFailing(calleeProc.getSignature)
-	    val pattern = Pattern.compile("#\\w+\\.[^;#\\}]*")
+	    val pattern = Pattern.compile("#\\w+\\.[^;#\\}]*;?")
       val matcher = pattern.matcher(rawcode)
       var codes = Set[String]()
       while (matcher.find()) {
@@ -386,15 +387,18 @@ class InterproceduralControlFlowGraph[Node <: CGNode] extends InterProceduralGra
 		          val l = body.location(ln.locIndex)
 		          val code = codes.find(_.contains("#" + ln.locUri + ".")).getOrElse(throw new RuntimeException("Could not find " + ln.locUri + " from \n" + rawcode))
 		          if(isCall(l)){
+		            val sig = ASTUtil.getCallSignature(l.asInstanceOf[JumpLocation].jump.asInstanceOf[CallJump])
 	              val c = addCGCallNode(callerContext.copy.setContext(calleeSig, ln.locUri))
 	              c.setOwner(calleeProc.getSignature)
 	              c.setCode(code)
 	              c.asInstanceOf[CGLocNode].setLocIndex(ln.locIndex)
+	              c.asInstanceOf[CGInvokeNode].setSignature(sig)
 	              nodes += c
 	              val r = addCGReturnNode(callerContext.copy.setContext(calleeSig, ln.locUri))
 	              r.setOwner(calleeProc.getSignature)
 	              r.setCode(code)
 	              r.asInstanceOf[CGLocNode].setLocIndex(ln.locIndex)
+	              r.asInstanceOf[CGInvokeNode].setSignature(sig)
 	              nodes += r
 	//              addEdge(c, r)
 		          } else {
@@ -733,9 +737,12 @@ abstract class CGLocNode(context : Context) extends CGNode(context) {
 
 abstract class CGInvokeNode(context : Context) extends CGLocNode(context) {
   final val CALLEES = "callee_set"
+  final val SIGNATURE = "signature"
   def getInvokeLabel : String
   def setCalleeSet(calleeSet : ISet[Callee]) = this.setProperty(CALLEES, calleeSet)
   def getCalleeSet : ISet[Callee] = this.getPropertyOrElse(CALLEES, isetEmpty)
+  def setSignature(sig : String) = this.setProperty(SIGNATURE, sig)
+  def getSignature : String = this.getProperty(SIGNATURE)
   override def toString : String = getInvokeLabel + "@" + context
 }
 

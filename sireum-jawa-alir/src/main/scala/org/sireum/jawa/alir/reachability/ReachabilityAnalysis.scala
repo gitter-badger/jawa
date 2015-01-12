@@ -14,6 +14,7 @@ import org.sireum.jawa.alir.pointsToAnalysis.PtaNode
 import org.sireum.jawa.alir.controlFlowGraph.CGNode
 import org.sireum.jawa.alir.pointsToAnalysis.InterproceduralPointsToAnalysis
 import org.sireum.jawa.Center
+import org.sireum.jawa.util.Timer
 
 /**
  * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
@@ -26,10 +27,10 @@ object ReachabilityAnalysis {
 	 * @param wholeProgram Building call graph in whole program mode or not
 	 * @return Set of reachable procedure resource uris from initial set
 	 */
-	def getReachableProcedures(procedures : Set[JawaProcedure], wholeProgram : Boolean) : Set[JawaProcedure] = {
+	def getReachableProcedures(procedures : Set[JawaProcedure], wholeProgram : Boolean, timerOpt : Option[Timer] = None) : Set[JawaProcedure] = {
     val pag = new PointerAssignmentGraph[PtaNode]()
     val cg = new InterproceduralControlFlowGraph[CGNode]
-    new InterproceduralPointsToAnalysis().pta(pag, cg, procedures, wholeProgram)
+    new InterproceduralPointsToAnalysis().pta(pag, cg, procedures, wholeProgram, timerOpt)
     cg.getReachableProcedures(procedures.map(_.getSignature)).map(Center.getProcedureWithoutFailing(_))
 	}
 	
