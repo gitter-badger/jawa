@@ -421,7 +421,7 @@ object ReachingFactsAnalysisHelper {
   }
   
   def isStaticFieldWrite(a : Assignment) : Boolean = {
-    var result = true
+    var result = false
     if(isObjectTypeRegAssignment(a))
     {
      val lhss = PilarAstHelper.getLHSs(a)

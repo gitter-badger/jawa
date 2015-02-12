@@ -38,7 +38,9 @@ trait InterProceduralMonotoneDataFlowAnalysisResult[LatticeElement] extends Inte
 trait InterProceduralMonotoneDataFlowAnalysisResultExtended[LatticeElement] extends InterProceduralMonotoneDataFlowAnalysisResult[LatticeElement] {
   def getEntrySetMap(): HashMap[CGNode, ISet[LatticeElement]]
   def getHoleNodes(): ISet[CGNode]
-  def getGlobalFacts(): ISet[LatticeElement]
+  def getExtraFacts(): ISet[LatticeElement]
+  def setHoleNodes(hns:ISet[CGNode]):Unit
+  def setExtrafacts(exf:ISet[LatticeElement]):Unit
 }
 
 /**
@@ -639,6 +641,7 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
    existingResult : InterProceduralMonotoneDataFlowAnalysisResultExtended[LatticeElement],
    forward : Boolean, lub : Boolean, rapid : Boolean, par : Boolean,
    gen : InterProceduralMonotonicFunction[LatticeElement],
+   extraGen : InterProceduralMonotonicFunction[LatticeElement],
    kill : InterProceduralMonotonicFunction[LatticeElement],
    callr : CallResolver[LatticeElement],
    iota : ISet[LatticeElement],
@@ -663,8 +666,8 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
                                  existingResult.getHoleNodes() 
                              else Set()
     
-    var globalFacts: ISet[LatticeElement] = if(existingResult!=null && !existingResult.getGlobalFacts().isEmpty) 
-                                                existingResult.getGlobalFacts() 
+    var extraFacts: ISet[LatticeElement] = if(existingResult!=null && !existingResult.getExtraFacts().isEmpty) 
+                                                existingResult.getExtraFacts() 
                                             else Set()
     
     def getEntrySet(n : N) = entrySetMap.getOrElse(n, initial)
@@ -678,7 +681,11 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
       
       override def getHoleNodes = holeNodes  // this includes those instructions which get info from other components, e.g. which insts do static field read op
       
-      override def getGlobalFacts = globalFacts // this includes facts which go to other components, e.g. static field write facts
+      override def setHoleNodes(h:ISet[CGNode]) = {holeNodes = h}
+      
+      override def getExtraFacts = extraFacts // this includes facts which go to other components, e.g. static field write facts
+      
+      override def setExtrafacts(exf:ISet[LatticeElement]) = {extraFacts = exf}
       
       override def toString = {
         val sb = new StringBuilder
@@ -911,18 +918,20 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
               }
             }
           case l : ActionLocation =>
-             if(esl.isDefined) eslb.action(l.action, s)
-             val r = actionF(s, l.action, currentNode)
-             
              l.action match{
                case a : AssignAction => 
                  if(ReachingFactsAnalysisHelper.isStaticFieldRead(a))
-                   holeNodes += currentNode
+                   {
+                     holeNodes += currentNode
+                     s ++= extraFacts
+                   }
                  if(ReachingFactsAnalysisHelper.isStaticFieldWrite(a))
-                   globalFacts ++= r // actually should be ReachingFactsAnalysisHelper.getGlobalFacts(r)
+                   extraFacts ++= extraGen(s, a:Assignment, currentNode)
                case _ =>
              }
              
+             if(esl.isDefined) eslb.action(l.action, s)
+             val r = actionF(s, l.action, currentNode)
              
              if(esl.isDefined) eslb.exitSet(None, r)
              val node = cg.getCGNormalNode(currentContext)
@@ -1001,10 +1010,10 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
     entrySetMap.put(flow.entryNode, iota)
     val workList = mlistEmpty[N]
     workList += flow.entryNode
-    while(!workList.isEmpty){
-      System.out.println("outerloop worklise size = " + workList.size + ", cg node num = " + cg.nodes.size)
-      while (!workList.isEmpty) {
-        System.out.println("innerloop worklise size = " + workList.size + ", cg node num = " + cg.nodes.size)
+    if(existingResult!=null && !existingResult.getHoleNodes().isEmpty)
+      workList ++= existingResult.getHoleNodes()
+    while(!workList.isEmpty){      
+      while (!workList.isEmpty) {        
         if(false){
           val newworkList = workList.par.map{
             n =>
