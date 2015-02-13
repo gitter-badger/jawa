@@ -39,7 +39,6 @@ trait InterProceduralMonotoneDataFlowAnalysisResultExtended[LatticeElement] exte
   def getEntrySetMap(): HashMap[CGNode, ISet[LatticeElement]]
   def getHoleNodes(): ISet[CGNode]
   def getExtraFacts(): ISet[LatticeElement]
-  def setHoleNodes(hns:ISet[CGNode]):Unit
   def setExtrafacts(exf:ISet[LatticeElement]):Unit
 }
 
@@ -680,8 +679,6 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
       override def getEntrySetMap = entrySetMap
       
       override def getHoleNodes = holeNodes  // this includes those instructions which get info from other components, e.g. which insts do static field read op
-      
-      override def setHoleNodes(h:ISet[CGNode]) = {holeNodes = h}
       
       override def getExtraFacts = extraFacts // this includes facts which go to other components, e.g. static field write facts
       
