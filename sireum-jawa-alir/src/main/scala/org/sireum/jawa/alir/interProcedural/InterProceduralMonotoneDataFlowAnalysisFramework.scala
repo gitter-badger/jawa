@@ -46,7 +46,8 @@ trait InterProceduralMonotoneDataFlowAnalysisResultExtended[LatticeElement] exte
  * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
  * @author <a href="mailto:sroy@k-state.edu">Sankardas Roy</a>
  */ 
-trait InterProceduralMonotonicFunction[LatticeElement] {
+trait InterProceduralMonotonicFunction[LatticeElement] extends PropertyProvider{
+  val propertyMap = mlinkedMapEmpty[Property.Key, Any]
 	import org.sireum.pilar.ast._
 
   def apply(s : ISet[LatticeElement], a : Assignment, currentNode : CGLocNode) : ISet[LatticeElement]
@@ -640,7 +641,6 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
    existingResult : InterProceduralMonotoneDataFlowAnalysisResultExtended[LatticeElement],
    forward : Boolean, lub : Boolean, rapid : Boolean, par : Boolean,
    gen : InterProceduralMonotonicFunction[LatticeElement],
-   extraGen : InterProceduralMonotonicFunction[LatticeElement],
    kill : InterProceduralMonotonicFunction[LatticeElement],
    callr : CallResolver[LatticeElement],
    iota : ISet[LatticeElement],
@@ -915,18 +915,6 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
               }
             }
           case l : ActionLocation =>
-             l.action match{
-               case a : AssignAction => 
-                 if(ReachingFactsAnalysisHelper.isStaticFieldRead(a))
-                   {
-                     holeNodes += currentNode
-                     s ++= extraFacts
-                   }
-                 if(ReachingFactsAnalysisHelper.isStaticFieldWrite(a))
-                   extraFacts ++= extraGen(s, a:Assignment, currentNode)
-               case _ =>
-             }
-             
              if(esl.isDefined) eslb.action(l.action, s)
              val r = actionF(s, l.action, currentNode)
              
@@ -1007,8 +995,12 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
     entrySetMap.put(flow.entryNode, iota)
     val workList = mlistEmpty[N]
     workList += flow.entryNode
-    if(existingResult!=null && !existingResult.getHoleNodes().isEmpty)
-      workList ++= existingResult.getHoleNodes()
+    if(!holeNodes.isEmpty){
+      workList ++= holeNodes
+      gen.setProperty("holeNodes", holeNodes)
+    }
+    if(!extraFacts.isEmpty)
+      gen.setProperty("globalFacts", extraFacts)
     while(!workList.isEmpty){      
       while (!workList.isEmpty) {        
         if(false){
@@ -1047,6 +1039,8 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
           newnodes
       }.reduce(iunion[N])
     }
+    holeNodes ++= gen.getPropertyOrElse("holeNodes", Set())
+    extraFacts ++= gen.getPropertyOrElse("globalFacts", Set())
     imdaf
     
   }
