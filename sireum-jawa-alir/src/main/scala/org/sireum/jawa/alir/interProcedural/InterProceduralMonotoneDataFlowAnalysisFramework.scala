@@ -37,10 +37,35 @@ trait InterProceduralMonotoneDataFlowAnalysisResult[LatticeElement] extends Inte
  */ 
 trait InterProceduralMonotoneDataFlowAnalysisResultExtended[LatticeElement] extends InterProceduralMonotoneDataFlowAnalysisResult[LatticeElement] {
   def getEntrySetMap(): HashMap[CGNode, ISet[LatticeElement]]
-  def getHoleNodes(): ISet[CGNode]
-  def getExtraFacts(): ISet[LatticeElement]
-  def setExtrafacts(exf:ISet[LatticeElement]):Unit
+  val extraInfo:ExtraInfo[LatticeElement] = new ExtraInfo[LatticeElement]
+  def getExtraInfo = extraInfo
+  def updateWorklist = extraInfo.getHoleNodes()
+  def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement]) = extraInfo.getInfluence(gen)
+  def setInfluence(gen:InterProceduralMonotonicFunction[LatticeElement]) = extraInfo.setInfluence(gen)     
 }
+
+class ExtraInfo[LatticeElement]{  
+  var holeNodes: ISet[CGNode] = Set()
+  var extraFacts: ISet[LatticeElement] = Set()
+  def getHoleNodes(): ISet[CGNode] = holeNodes
+  def getExtraFacts(): ISet[LatticeElement] = extraFacts
+  def mergeWithOther(e:ExtraInfo[LatticeElement]) = {
+    extraFacts ++= e.extraFacts // note that we do not merge holeNodes as that does not make sense
+    this
+  }
+  def diffFacts(e:ExtraInfo[LatticeElement]):ISet[LatticeElement] = extraFacts -- e.extraFacts 
+  def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement]):Unit = {
+      gen.setProperty("holeNodes", holeNodes)
+      gen.setProperty("globalFacts", extraFacts)
+  }
+  
+  def setInfluence(gen:InterProceduralMonotonicFunction[LatticeElement]):Unit = {
+      holeNodes ++= gen.getPropertyOrElse("holeNodes", Set())
+      extraFacts ++= gen.getPropertyOrElse("globalFacts", Set())
+  }
+  
+}
+
 
 /**
  * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
@@ -661,14 +686,6 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
                              else new HashMap[N, ISet[LatticeElement]]
                           }
     
-    var holeNodes: ISet[N] = if(existingResult!=null && !existingResult.getHoleNodes().isEmpty) 
-                                 existingResult.getHoleNodes() 
-                             else Set()
-    
-    var extraFacts: ISet[LatticeElement] = if(existingResult!=null && !existingResult.getExtraFacts().isEmpty) 
-                                                existingResult.getExtraFacts() 
-                                            else Set()
-    
     def getEntrySet(n : N) = entrySetMap.getOrElse(n, initial)
     
     class IMdaf(val entrySet : N => ISet[LatticeElement],
@@ -678,11 +695,6 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
 
       override def getEntrySetMap = entrySetMap
       
-      override def getHoleNodes = holeNodes  // this includes those instructions which get info from other components, e.g. which insts do static field read op
-      
-      override def getExtraFacts = extraFacts // this includes facts which go to other components, e.g. static field write facts
-      
-      override def setExtrafacts(exf:ISet[LatticeElement]) = {extraFacts = exf}
       
       override def toString = {
         val sb = new StringBuilder
@@ -995,12 +1007,10 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
     entrySetMap.put(flow.entryNode, iota)
     val workList = mlistEmpty[N]
     workList += flow.entryNode
-    if(!holeNodes.isEmpty){
-      workList ++= holeNodes
-      gen.setProperty("holeNodes", holeNodes)
+    if(existingResult != null){
+      workList ++= existingResult.updateWorklist
+      existingResult.getInfluence(gen)
     }
-    if(!extraFacts.isEmpty)
-      gen.setProperty("globalFacts", extraFacts)
     while(!workList.isEmpty){      
       while (!workList.isEmpty) {        
         if(false){
@@ -1039,8 +1049,7 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
           newnodes
       }.reduce(iunion[N])
     }
-    holeNodes ++= gen.getPropertyOrElse("holeNodes", Set())
-    extraFacts ++= gen.getPropertyOrElse("globalFacts", Set())
+    imdaf.setInfluence(gen)
     imdaf
     
   }
