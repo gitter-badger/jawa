@@ -49,19 +49,19 @@ class ExtraInfo[LatticeElement]{
   var extraFacts: ISet[LatticeElement] = Set()
   def getHoleNodes(): ISet[CGNode] = holeNodes
   def getExtraFacts(): ISet[LatticeElement] = extraFacts
-  def mergeWithOther(e:ExtraInfo[LatticeElement]) = {
+  def merge(e:ExtraInfo[LatticeElement]) = {
     extraFacts ++= e.extraFacts // note that we do not merge holeNodes as that does not make sense
     this
   }
   def diffFacts(e:ExtraInfo[LatticeElement]):ISet[LatticeElement] = extraFacts -- e.extraFacts 
   def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement]):Unit = {
-      gen.setProperty("holeNodes", holeNodes)
-      gen.setProperty("globalFacts", extraFacts)
+    gen.setProperty("holeNodes", holeNodes)
+    gen.setProperty("globalFacts", extraFacts)
   }
   
   def setInfluence(gen:InterProceduralMonotonicFunction[LatticeElement]):Unit = {
-      holeNodes ++= gen.getPropertyOrElse("holeNodes", Set())
-      extraFacts ++= gen.getPropertyOrElse("globalFacts", Set())
+    holeNodes ++= gen.getPropertyOrElse("holeNodes", Set())
+    extraFacts ++= gen.getPropertyOrElse("globalFacts", Set())
   }
   
 }
