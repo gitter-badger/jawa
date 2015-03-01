@@ -19,7 +19,7 @@ import org.sireum.jawa.GlobalConfig
 import scala.collection.mutable.HashMap
 import scala.collection.mutable.SynchronizedMap
 import org.sireum.jawa.alir.Context
-import org.sireum.jawa.alir.reachingFactsAnalysis.ReachingFactsAnalysisHelper
+
 
 /**
  * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
@@ -40,28 +40,41 @@ trait InterProceduralMonotoneDataFlowAnalysisResultExtended[LatticeElement] exte
   val extraInfo:ExtraInfo[LatticeElement] = new ExtraInfo[LatticeElement]
   def getExtraInfo = extraInfo
   def updateWorklist = extraInfo.getHoleNodes()
-  def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement]) = extraInfo.getInfluence(gen)
-  def setInfluence(gen:InterProceduralMonotonicFunction[LatticeElement]) = extraInfo.setInfluence(gen)     
+  def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
+      kill:InterProceduralMonotonicFunction[LatticeElement], 
+      callr : CallResolver[LatticeElement]) = extraInfo.getInfluence(gen, kill, callr)
+  def setInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
+      kill:InterProceduralMonotonicFunction[LatticeElement], 
+      callr : CallResolver[LatticeElement]) = extraInfo.setInfluence(gen, kill, callr)     
 }
 
-class ExtraInfo[LatticeElement]{  
+class ExtraInfo[LatticeElement]{  // this represents component level pool
   var holeNodes: ISet[CGNode] = Set()
   var extraFacts: ISet[LatticeElement] = Set()
+  var sentIntentFacts: IMap[JawaProcedure, ISet[LatticeElement]] = imapEmpty  // a JawaProcedure is one target of an intent
   def getHoleNodes(): ISet[CGNode] = holeNodes
   def getExtraFacts(): ISet[LatticeElement] = extraFacts
   def merge(e:ExtraInfo[LatticeElement]) = {
-    extraFacts ++= e.extraFacts // note that we do not merge holeNodes as that does not make sense
+    extraFacts ++= e.extraFacts // note that we do not merge holeNodes across components as that does not make sense
+    sentIntentFacts ++= e.sentIntentFacts 
     this
   }
-  def diffFacts(e:ExtraInfo[LatticeElement]):ISet[LatticeElement] = extraFacts -- e.extraFacts 
-  def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement]):Unit = {
+  def diffExtraFacts(e:ExtraInfo[LatticeElement]):ISet[LatticeElement] = extraFacts -- e.extraFacts
+  def diffIntentFacts(e:ExtraInfo[LatticeElement]):IMap[JawaProcedure, ISet[LatticeElement]] = (sentIntentFacts.toSet diff e.sentIntentFacts.toSet).toMap
+  def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
+      kill:InterProceduralMonotonicFunction[LatticeElement], 
+      callr : CallResolver[LatticeElement]):Unit = {
     gen.setProperty("holeNodes", holeNodes)
     gen.setProperty("globalFacts", extraFacts)
+    callr.setProperty("intentFacts", sentIntentFacts)
   }
   
-  def setInfluence(gen:InterProceduralMonotonicFunction[LatticeElement]):Unit = {
+  def setInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
+      kill:InterProceduralMonotonicFunction[LatticeElement], 
+      callr : CallResolver[LatticeElement]):Unit = {
     holeNodes ++= gen.getPropertyOrElse("holeNodes", Set())
     extraFacts ++= gen.getPropertyOrElse("globalFacts", Set())
+    sentIntentFacts ++= callr.getPropertyOrElse("intentFacts", Map())
   }
   
 }
@@ -93,7 +106,8 @@ trait NodeListener {
  * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
  * @author <a href="mailto:sroy@k-state.edu">Sankardas Roy</a>
  */ 
-trait CallResolver[LatticeElement] {
+trait CallResolver[LatticeElement] extends PropertyProvider{
+  val propertyMap = mlinkedMapEmpty[Property.Key, Any]
   /**
 	 * It returns the facts for each callee entry node and caller return node
 	 */
@@ -1009,7 +1023,7 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
     workList += flow.entryNode
     if(existingResult != null){
       workList ++= existingResult.updateWorklist
-      existingResult.getInfluence(gen)
+      existingResult.getInfluence(gen, kill, callr)
     }
     while(!workList.isEmpty){      
       while (!workList.isEmpty) {        
@@ -1049,7 +1063,7 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
           newnodes
       }.reduce(iunion[N])
     }
-    imdaf.setInfluence(gen)
+    imdaf.setInfluence(gen, kill, callr)
     imdaf
     
   }
