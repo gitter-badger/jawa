@@ -1017,9 +1017,9 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
         case a => throw new RuntimeException("unexpected node type: " + a)
       }
       result
-    }    
+    }
+    
     entrySetMap.put(flow.entryNode, iota)
-    System.out.println("entry node = " + flow.entryNode + " entryNode facts = " + entrySetMap.get(flow.entryNode))
     val workList = mlistEmpty[N]
     workList += flow.entryNode
     if(existingResult != null){
