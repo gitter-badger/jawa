@@ -54,6 +54,7 @@ class ExtraInfo[LatticeElement]{  // this represents component level pool
   var sentIntentFacts: IMap[JawaProcedure, ISet[LatticeElement]] = imapEmpty  // a JawaProcedure is one target of an intent
   def getHoleNodes(): ISet[CGNode] = holeNodes
   def getExtraFacts(): ISet[LatticeElement] = extraFacts
+  def getIntentFacts:IMap[JawaProcedure, ISet[LatticeElement]] = sentIntentFacts
   def merge(e:ExtraInfo[LatticeElement]) = {
     extraFacts ++= e.extraFacts // note that we do not merge holeNodes across components as that does not make sense
     sentIntentFacts ++= e.sentIntentFacts 
@@ -66,7 +67,7 @@ class ExtraInfo[LatticeElement]{  // this represents component level pool
       callr : CallResolver[LatticeElement]):Unit = {
     gen.setProperty("holeNodes", holeNodes)
     gen.setProperty("globalFacts", extraFacts)
-    callr.setProperty("intentFacts", sentIntentFacts)
+    callr.setProperty("sentIntentFacts", sentIntentFacts)
   }
   
   def setInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
@@ -74,7 +75,7 @@ class ExtraInfo[LatticeElement]{  // this represents component level pool
       callr : CallResolver[LatticeElement]):Unit = {
     holeNodes ++= gen.getPropertyOrElse("holeNodes", Set())
     extraFacts ++= gen.getPropertyOrElse("globalFacts", Set())
-    sentIntentFacts ++= callr.getPropertyOrElse("intentFacts", Map())
+    sentIntentFacts ++= callr.getPropertyOrElse("sentIntentFacts", Map())
   }
   
 }
@@ -1016,9 +1017,9 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
         case a => throw new RuntimeException("unexpected node type: " + a)
       }
       result
-    }
-
+    }    
     entrySetMap.put(flow.entryNode, iota)
+    System.out.println("entry node = " + flow.entryNode + " entryNode facts = " + entrySetMap.get(flow.entryNode))
     val workList = mlistEmpty[N]
     workList += flow.entryNode
     if(existingResult != null){
