@@ -42,31 +42,31 @@ trait InterProceduralMonotoneDataFlowAnalysisResultExtended[LatticeElement] exte
   def updateWorklist = extraInfo.getHoleNodes()
   def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
       kill:InterProceduralMonotonicFunction[LatticeElement], 
-      callr : CallResolver[LatticeElement]) = extraInfo.getInfluence(gen, kill, callr)
+      callr: CallResolver[LatticeElement]) = extraInfo.getInfluence(gen, kill, callr)
   def setInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
       kill:InterProceduralMonotonicFunction[LatticeElement], 
-      callr : CallResolver[LatticeElement]) = extraInfo.setInfluence(gen, kill, callr)     
+      callr: CallResolver[LatticeElement]) = extraInfo.setInfluence(gen, kill, callr)     
 }
 
 class ExtraInfo[LatticeElement]{  // this represents component level pool
   var holeNodes: ISet[CGNode] = Set()
-  var extraFacts: ISet[LatticeElement] = Set()
+  var staticFacts: ISet[LatticeElement] = Set()
   var sentIntentFacts: IMap[JawaProcedure, ISet[LatticeElement]] = imapEmpty  // a JawaProcedure is one target of an intent
   def getHoleNodes(): ISet[CGNode] = holeNodes
-  def getExtraFacts(): ISet[LatticeElement] = extraFacts
+  def getStaticFacts(): ISet[LatticeElement] = staticFacts
   def getIntentFacts:IMap[JawaProcedure, ISet[LatticeElement]] = sentIntentFacts
   def merge(e:ExtraInfo[LatticeElement]) = {
-    extraFacts ++= e.extraFacts // note that we do not merge holeNodes across components as that does not make sense
+    staticFacts ++= e.staticFacts // note that we do not merge holeNodes across components as that does not make sense
     sentIntentFacts ++= e.sentIntentFacts 
     this
   }
-  def diffExtraFacts(e:ExtraInfo[LatticeElement]):ISet[LatticeElement] = extraFacts -- e.extraFacts
+  def diffStaticFacts(e:ExtraInfo[LatticeElement]): ISet[LatticeElement] = staticFacts -- e.staticFacts
   def diffIntentFacts(e:ExtraInfo[LatticeElement]):IMap[JawaProcedure, ISet[LatticeElement]] = (sentIntentFacts.toSet diff e.sentIntentFacts.toSet).toMap
   def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
       kill:InterProceduralMonotonicFunction[LatticeElement], 
       callr : CallResolver[LatticeElement]):Unit = {
     gen.setProperty("holeNodes", holeNodes)
-    gen.setProperty("globalFacts", extraFacts)
+    gen.setProperty("globalFacts", staticFacts)
     callr.setProperty("sentIntentFacts", sentIntentFacts)
   }
   
@@ -74,7 +74,7 @@ class ExtraInfo[LatticeElement]{  // this represents component level pool
       kill:InterProceduralMonotonicFunction[LatticeElement], 
       callr : CallResolver[LatticeElement]):Unit = {
     holeNodes ++= gen.getPropertyOrElse("holeNodes", Set())
-    extraFacts ++= gen.getPropertyOrElse("globalFacts", Set())
+    staticFacts ++= gen.getPropertyOrElse("globalFacts", Set())
     sentIntentFacts ++= callr.getPropertyOrElse("sentIntentFacts", Map())
   }
   
