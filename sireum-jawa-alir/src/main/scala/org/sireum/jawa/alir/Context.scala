@@ -11,16 +11,18 @@ package org.sireum.jawa.alir
  * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
  * @author <a href="mailto:sroy@k-state.edu">Sankardas Roy</a>
  */ 
-class Context(var k : Int, var componentName : String = ""){
+class Context(var k : Int){
   def copy : Context = {
-    val clone = new Context(k, componentName)
+    val clone = new Context(k)
     clone.callStack ++= this.callStack
+    clone.componentName = this.componentName
     clone
   }
   def copy(c : Context) = {
     this.callStack = c.getContext
     }
   private var callStack : List[(String, String)] = List()
+  private var componentName : String = ""
   def length : Int = this.callStack.size
   def setContext(pSig : String, loc : String) = {
     if(length <= k){
@@ -36,10 +38,10 @@ class Context(var k : Int, var componentName : String = ""){
     else callStack.head._2
   }
   def getComponentName : String = componentName
-//  def setComponentName(comp : String) ={
-//    this.componentName = comp
-//    this
-//  }
+  def setComponentName(comp : String) ={
+    this.componentName = comp
+    this
+  }
   /**
    * update current context using another context.
    */
