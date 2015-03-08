@@ -11,13 +11,15 @@ package org.sireum.jawa.alir
  * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
  * @author <a href="mailto:sroy@k-state.edu">Sankardas Roy</a>
  */ 
-class Context(var k : Int){
+class Context(var k : Int, var componentName : String = ""){
   def copy : Context = {
-    val clone = new Context(k)
+    val clone = new Context(k, componentName)
     clone.callStack ++= this.callStack
     clone
   }
-  def copy(c : Context) = this.callStack = c.getContext
+  def copy(c : Context) = {
+    this.callStack = c.getContext
+    }
   private var callStack : List[(String, String)] = List()
   def length : Int = this.callStack.size
   def setContext(pSig : String, loc : String) = {
@@ -28,12 +30,16 @@ class Context(var k : Int){
     }
     this
   }
-  
+
   def getCurrentLocUri : String = {
     if(callStack.isEmpty) ""
     else callStack.head._2
   }
-  
+  def getComponentName : String = componentName
+//  def setComponentName(comp : String) ={
+//    this.componentName = comp
+//    this
+//  }
   /**
    * update current context using another context.
    */
@@ -41,6 +47,7 @@ class Context(var k : Int){
     this.k = context2.k
     val size2 = context2.length
     val callStack2 = context2.getContext
+    this.componentName = context2.componentName
     val size = length
     if(size + size2 <= k + 1){
       callStack = callStack ::: callStack2
@@ -61,12 +68,13 @@ class Context(var k : Int){
   def getContext : List[(String, String)] = this.callStack
   def getLocUri : String = getContext(0)._2
   def getProcedureSig = getContext(0)._1
-  def isDiff(c : Context) : Boolean = !this.callStack.equals(c.getContext)
+  def isDiff(c : Context) : Boolean = !(this.callStack.equals(c.getContext) && (this.componentName.equals(c.componentName)))
   override def equals(a : Any) : Boolean = {
-    if(a.isInstanceOf[Context]) this.callStack.equals(a.asInstanceOf[Context].getContext)
+    if(a.isInstanceOf[Context]) 
+      this.callStack.equals(a.asInstanceOf[Context].getContext) && (this.componentName.equals(a.asInstanceOf[Context].getComponentName))
     else false
   }
-  override def hashCode() = if (this.callStack == null) 0 else this.callStack.hashCode
+  override def hashCode() = if (this.callStack == null) 0 else (this.callStack, this.componentName).hashCode
   override def toString = {
     var sb = new StringBuilder
     this.callStack.foreach{
@@ -80,6 +88,7 @@ class Context(var k : Int){
         	sb.append("," + str.substring(sig.lastIndexOf('.') + 1, sig.lastIndexOf(':')) + ")")
         else sb.append("," + str + ")")
     }
+    sb.append("(" + this.componentName + ")")
     sb.toString.intern()
   }
   def toFullString = {
@@ -89,6 +98,7 @@ class Context(var k : Int){
         sb.append("(" + sig)
         sb.append("," + str + ")")
     }
+    sb.append("(" + this.componentName + ")")
     sb.toString.intern()
   }
 }

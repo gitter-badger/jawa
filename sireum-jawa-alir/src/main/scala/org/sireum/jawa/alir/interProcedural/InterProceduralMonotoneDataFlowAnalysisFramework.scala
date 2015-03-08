@@ -60,7 +60,7 @@ class ExtraInfo[LatticeElement]{  // this represents component level pool
     sentIntentFacts ++= e.sentIntentFacts 
     this
   }
-  def diffStaticFacts(e:ExtraInfo[LatticeElement]): ISet[LatticeElement] = staticFacts -- e.staticFacts
+  def diffStaticFacts(e:ExtraInfo[LatticeElement]): ISet[LatticeElement] = (staticFacts -- e.staticFacts) ++ (e.staticFacts -- staticFacts)
   def diffIntentFacts(e:ExtraInfo[LatticeElement]):IMap[JawaProcedure, ISet[LatticeElement]] = (sentIntentFacts.toSet diff e.sentIntentFacts.toSet).toMap
   def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
       kill:InterProceduralMonotonicFunction[LatticeElement], 
