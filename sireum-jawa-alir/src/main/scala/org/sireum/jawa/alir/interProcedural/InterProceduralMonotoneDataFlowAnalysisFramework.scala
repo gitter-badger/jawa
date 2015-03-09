@@ -37,6 +37,11 @@ trait InterProceduralMonotoneDataFlowAnalysisResult[LatticeElement] extends Inte
  */ 
 trait InterProceduralMonotoneDataFlowAnalysisResultExtended[LatticeElement] extends InterProceduralMonotoneDataFlowAnalysisResult[LatticeElement] {
   def getEntrySetMap(): HashMap[CGNode, ISet[LatticeElement]]
+  def merge(another: InterProceduralMonotoneDataFlowAnalysisResultExtended[LatticeElement]) = {
+    this.getEntrySetMap ++= another.getEntrySetMap()
+    this.getExtraInfo.merge(another.getExtraInfo)
+    this
+  }
   val extraInfo:ExtraInfo[LatticeElement] = new ExtraInfo[LatticeElement]
   def getExtraInfo = extraInfo
   def updateWorklist = extraInfo.getHoleNodes()

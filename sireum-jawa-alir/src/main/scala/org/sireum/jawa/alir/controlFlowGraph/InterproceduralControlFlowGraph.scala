@@ -346,8 +346,8 @@ class InterproceduralControlFlowGraph[Node <: CGNode] extends InterProceduralGra
         this.callMap += (src -> (this.callMap.getOrElse(src, isetEmpty) ++ dsts))
     }
     this.processed ++= cg.processed
-    this.predBranchMap ++= cg.predBranchMap
-    this.succBranchMap ++= cg.succBranchMap
+    if(cg.predBranchMap != null) this.predBranchMap ++= cg.predBranchMap
+    if(cg.succBranchMap != null) this.succBranchMap ++= cg.succBranchMap
   }
   
   def collectCfgToBaseGraph[VirtualLabel](calleeProc : JawaProcedure, callerContext : Context, isFirst : Boolean = false) = {
