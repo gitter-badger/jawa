@@ -113,7 +113,7 @@ class InterProceduralDataDependenceGraph[Node <: IDDGNode] extends InterProcedur
 	  val cgN = {
 	    if(this.cg.cgNormalNodeExists(defSite)) this.cg.getCGNormalNode(defSite)
 		  else if(this.cg.cgCallNodeExists(defSite)) this.cg.getCGCallNode(defSite)
-		  else if(defSite.toString == "(EntryPoint,L0000)()") this.cg.entryNode
+		  else if(defSite.toString.startsWith("(EntryPoint,L0000)")) this.cg.entryNode // defSite.toString == "(EntryPoint,L0000)()"
 		  else if(defSite.toString == "(Center,L0000)()") this.cg.centerNode
 		  else throw new RuntimeException("Cannot find node: " + defSite)
 	  }
