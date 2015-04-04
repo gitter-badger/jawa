@@ -83,7 +83,7 @@ object JawaResolver {
     if(!typ.isArray && !JawaCodeSource.containsRecord(recordName)){
       if(!Center.containsRecord(recordName) || Center.getRecord(recordName).getResolvingLevel < desiredLevel){
 	      val rec = new JawaRecord().init(recordName)
-	      rec.setPhantom
+	      rec.setUnknown
 	      rec.setResolvingLevel(desiredLevel)
 	      Center.tryRemoveRecord(recordName)
 	      Center.addRecord(rec)
@@ -197,6 +197,11 @@ object JawaResolver {
     rec.setResolvingLevel(Center.ResolveLevel.BODY)
     Center.addRecord(rec)
     rec.addField(createClassField(rec))
+    val field : JawaField = new JawaField
+    val fSig = StringFormConverter.generateFieldSignature(rec.getName, "length", false)
+    field.init(fSig, NormalType("int", 0))
+    field.setAccessFlags("FINAL")
+    rec.addField(field)
 	  Center.resolveRecordsRelationWholeProgram
   }
     

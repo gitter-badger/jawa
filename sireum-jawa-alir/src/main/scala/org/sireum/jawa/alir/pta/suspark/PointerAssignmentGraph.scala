@@ -1,0 +1,643 @@
+/*
+Copyright (c) 2013-2014 Fengguo Wei & Sankardas Roy, Kansas State University.        
+All rights reserved. This program and the accompanying materials      
+are made available under the terms of the Eclipse Public License v1.0 
+which accompanies this distribution, and is available at              
+http://www.eclipse.org/legal/epl-v10.html                             
+*/
+package org.sireum.jawa.alir.pta.suspark
+
+import org.sireum.util._
+import org.sireum.alir.AlirGraph
+import org.sireum.alir.AlirEdgeAccesses
+import org.sireum.alir.AlirSuccPredAccesses
+import org.sireum.alir.ControlFlowGraph
+import org.sireum.alir.ReachingDefinitionAnalysis
+import org.jgrapht.graph.DirectedMultigraph
+import org.jgrapht.EdgeFactory
+import org.sireum.alir.AlirEdge
+import org.jgrapht.ext.VertexNameProvider
+import java.io.Writer
+import org.jgrapht.ext.DOTExporter
+import org.sireum.jawa.alir.Context
+import org.sireum.jawa._
+import org.sireum.jawa.alir.interProcedural.InterProceduralGraph
+import org.sireum.jawa.alir.interProcedural.InterProceduralNode
+import org.sireum.jawa.util.StringFormConverter
+import org.sireum.jawa.alir.JawaAlirInfoProvider
+import scala.collection.mutable.HashMap
+import scala.collection.mutable.SynchronizedMap
+import org.sireum.jawa.alir.util.CallHandler
+import org.sireum.jawa.alir.interProcedural.Callee
+import org.sireum.jawa.alir.pta.PTAResult
+import org.sireum.jawa.alir.pta.VarSlot
+import org.sireum.jawa.alir.pta.ArraySlot
+import org.sireum.jawa.alir.pta.InstanceSlot
+import org.sireum.alir.Slot
+import org.sireum.jawa.alir.pta.PTAInstance
+import org.sireum.jawa.alir.pta.Instance
+import org.sireum.jawa.alir.pta.PTAConcreteStringInstance
+import org.sireum.jawa.alir.pta.ArraySlot
+import org.sireum.jawa.alir.pta.FieldSlot
+import org.sireum.jawa.alir.pta.InvokeSlot
+import org.sireum.jawa.MessageCenter._
+
+/**
+ * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
+ */
+class PointsToMap extends PTAResult {
+  
+  final val TITLE = "PointsToMap"
+  
+  /**
+   * e.g. L0: p = q; L1:  r = p; transfer means p@L0 -> p@L1
+   */
+  def transferPointsToSet(n1 : PtaNode, n2 : PtaNode) = {
+    n2.getSlots(this) foreach{
+      addInstances(_, n2.getContext.copy, pointsToSet(n1))
+    }
+  }
+  
+  /**
+   * e.g. L0: p = q; L1:  r = p; transfer means p@L0 -> p@L1
+   */
+  def transferPointsToSet(n : PtaNode, d : ISet[Instance]) = {
+    n.getSlots(this) foreach{
+      addInstances(_, n.getContext.copy, d)
+    }
+  }
+  
+  /**
+   * n1 -> n2 or n1.f -> n2 or n1[] -> n2, n1 -> n2.f, n1 -> n2[]
+   */
+  def propagatePointsToSet(n1 : PtaNode, n2 : PtaNode) = {
+    n2.getSlots(this) foreach {
+      slot =>
+        slot match {
+          case arr : ArraySlot =>
+            addInstances(arr, n2.getContext, pointsToSet(n1))
+          case fie : FieldSlot =>
+            addInstances(fie, n2.getContext, pointsToSet(n1))
+          case _ =>
+            setInstances(slot, n2.getContext, pointsToSet(n1))
+        }
+    }
+  }
+  
+	/**
+	 * n or n.f or n[] or @@n
+	 */
+  def pointsToSet(n : PtaNode) : ISet[Instance] = {
+    val slots = n.getSlots(this)
+    if(!slots.isEmpty){
+      slots.map {
+        s =>
+          pointsToSet(s, n.getContext)
+      }.reduce(iunion[Instance])
+    } else isetEmpty
+  }
+
+  def isDiff(n1 : PtaNode, n2 : PtaNode) : Boolean = {
+    pointsToSet(n1) != pointsToSet(n2)
+  }
+  
+  def isThisDiff(n1 : PtaNode, n2 : PtaNode) : Boolean = {
+    !getThisDiff(n1, n2).isEmpty
+  }
+  
+  def contained(n1 : PtaNode, n2 : PtaNode) : Boolean = {
+    (pointsToSet(n1) -- pointsToSet(n2)).isEmpty
+  }
+  
+  def getDiff(n1 : PtaNode, n2 : PtaNode) : ISet[Instance] = {
+    pointsToSet(n1) diff pointsToSet(n2)
+  }
+  
+  def getThisDiff(n1 : PtaNode, n2 : PtaNode) : ISet[Instance] = {
+    assert(n2.point.isInstanceOf[PointThisEntry])
+    val ptsdiff = pointsToSet(n1) -- pointsToSet(n2)
+    val thisent = n2.point.asInstanceOf[PointThisEntry]
+    val calleeSubSig = StringFormConverter.getSubSigFromProcSig(thisent.ownerSig)
+    val thiscls = Center.resolveRecord(thisent.paramTyp.name, Center.ResolveLevel.HIERARCHY)
+    ptsdiff.filter { 
+      ins => 
+        val inscls = Center.resolveRecord(ins.getType.name, Center.ResolveLevel.HIERARCHY)
+        var res : Boolean = false
+        var tmpRec = inscls
+        import scala.util.control.Breaks._
+        breakable{
+          while(tmpRec.hasSuperClass){
+            if(tmpRec == thiscls){
+              res = true
+              break
+            }
+            else if(tmpRec.declaresProcedure(calleeSubSig)){
+              res = false
+              break
+            }
+            else tmpRec = tmpRec.getSuperClass
+          }
+        }
+        if(tmpRec == inscls) res = true
+        else {
+          err_msg_detail(TITLE, "Given inscls: " + inscls + " and thiscls: " + thiscls + " is not in the Same hierachy.")
+          res = false
+        }
+        res
+    }
+  }
+}
+
+/**
+ * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
+ */
+class PointerAssignmentGraph[Node <: PtaNode]
+  extends InterProceduralGraph[Node]
+  with PAGConstraint{
+  self=>
+    
+  val pointsToMap = new PointsToMap
+  
+  private val processed : MMap[(JawaProcedure, Context), Point with Proc] = new HashMap[(JawaProcedure, Context), Point with Proc] with SynchronizedMap[(JawaProcedure, Context), Point with Proc]
+  
+  def isProcessed(proc : JawaProcedure, callerContext : Context) : Boolean = processed.contains(proc, callerContext)
+  
+  def getPointProc(proc : JawaProcedure, callerContext : Context) : Point with Proc =  processed(proc, callerContext)
+  
+  def addProcessed(jp : JawaProcedure, c : Context, ps : Set[Point]) = {
+    ps.foreach{
+      p =>
+        if(p.isInstanceOf[Point with Proc])
+          this.processed += ((jp, c) -> p.asInstanceOf[Point with Proc])
+    }
+  }
+  
+  def getProcessed = this.processed
+  
+  private var newNodes : Set[Node] = isetEmpty
+  private var newEdges : Set[Edge] = isetEmpty
+  
+  final case class PTACallee(callee : JawaProcedure, pi : Point with Invoke, node : Node) extends Callee
+  
+  def processStaticCall : ISet[PTACallee] = {
+    val staticCallees = msetEmpty[PTACallee]
+    newNodes.foreach{
+      node =>
+        if(node.point.isInstanceOf[Point with Invoke]){
+          val pi = node.point.asInstanceOf[Point with Invoke]
+          if(pi.invokeTyp.equals("static")){
+	          val callee = getStaticCallee(pi)
+	          staticCallees += PTACallee(callee, pi, node)
+	        }
+        }
+    }
+    newNodes = isetEmpty
+    staticCallees.toSet
+  }
+  
+  def processObjectAllocation = {
+    newEdges.foreach{
+      edge =>
+        getEdgeType(edge) match{
+          case EdgeType.ALLOCATION =>
+            if(pointsToMap.isDiff(edge.source, edge.target)){
+	            pointsToMap.propagatePointsToSet(edge.source, edge.target)
+	            worklist += edge.target
+            }
+          case _ =>
+        }
+    }
+    newEdges = isetEmpty
+  }
+  
+  def addEdge(source : Node, target : Node, typ : EdgeType.Value) : Edge = {
+    val edge = graph.addEdge(getNode(source), getNode(target))
+    edge.setProperty(EDGE_TYPE, typ)
+    edge
+  }
+  
+  def getEdgeType(edge : Edge) : EdgeType.Value = {
+    assume(edge.propertyMap.contains(EDGE_TYPE))
+    edge.getProperty[EdgeType.Value](EDGE_TYPE)
+  }
+  
+  final val EDGE_TYPE = "EdgeType"
+  final val PARAM_NUM = "ParamNumber"
+
+  /**
+   * represents max number of strings in the strings set of a StringInstance
+   */
+//  final val K_STRING : Int = 5
+  
+  
+  final val worklist : MList[Node] = mlistEmpty
+    
+  /**
+   * combine two pags into one.
+   */ 
+  def combinePags(pag2 : PointerAssignmentGraph[Node]) = {
+    pl ++= pag2.pool
+    pag2.nodes.foreach(
+      node=>{
+        addNode(node)
+      }
+    )
+    pag2.edges.foreach(
+      edge=>{
+        addEdge(edge)
+      }  
+    )
+    this.processed ++= pag2.getProcessed
+    worklist ++= pag2.worklist
+  }
+  
+  
+  /**
+   * create the nodes and edges to reflect the constraints corresponding 
+   * to the given program point. If a value is added to a node, then that 
+   * node is added to the worklist.
+   */
+  def constructGraph(ap : JawaProcedure, ps : Set[Point], callerContext : Context) = {
+    addProcessed(ap, callerContext.copy, ps)
+    ps.foreach{
+      p =>
+        newNodes ++= collectNodes(ap.getSignature, p, callerContext.copy)
+    }
+    ps.foreach{
+      p =>
+        val cfg = JawaAlirInfoProvider.getCfg(ap)
+        val rda = JawaAlirInfoProvider.getRda(ap, cfg)
+        val constraintMap = applyConstraint(p, ps, cfg, rda)
+        newEdges ++= buildingEdges(constraintMap, ap.getSignature, callerContext.copy)
+    }
+  }
+  
+
+  def collectNodes(pSig : String, p : Point, callerContext : Context) : Set[Node] = {
+    var nodes : Set[Node] = Set()
+    val context = callerContext.copy
+    p match {
+      case lp : Point with Loc => context.setContext(pSig, lp.loc)
+      case _ => context.setContext(pSig, p.ownerSig)
+    }
+    
+    p match {
+      case asmtP : PointAsmt =>
+        val lhs = asmtP.lhs
+        val rhs = asmtP.rhs
+        val lhsNode = getNodeOrElse(lhs, context.copy)
+        nodes += lhsNode
+        val rhsNode = getNodeOrElse(rhs, context.copy)
+        nodes += rhsNode
+        lhs match {
+          case pfl : PointFieldL =>
+            val fieldNode = getNodeOrElse(pfl, context.copy)
+            nodes += fieldNode
+            val baseNode = getNodeOrElse(pfl.baseP, context.copy)
+            nodes += baseNode
+//            baseNode.asInstanceOf[PtaFieldBaseNode].fieldNode = fieldNode.asInstanceOf[PtaFieldNode]
+//            fieldNode.asInstanceOf[PtaFieldNode].baseNode = baseNode.asInstanceOf[PtaFieldBaseNode]
+          case _ =>
+        }
+        rhs match {
+          case pgr : PointGlobalR =>
+            val globalVarNode = getNodeOrElse(pgr, context.copy)
+            nodes += globalVarNode
+          case pfr : PointFieldR =>
+            val fieldNode = getNodeOrElse(pfr, context.copy)
+            nodes += fieldNode
+            val baseNode = getNodeOrElse(pfr.baseP, context.copy)
+            nodes += baseNode
+//            baseNode.asInstanceOf[PtaFieldBaseNode].fieldNode = fieldNode.asInstanceOf[PtaFieldNode]
+//            fieldNode.asInstanceOf[PtaFieldNode].baseNode = baseNode.asInstanceOf[PtaFieldBaseNode]
+          case pso : PointStringO =>
+            val ins = PTAConcreteStringInstance(pso.text, context.copy)
+            pointsToMap.addInstance(InstanceSlot(ins), context.copy, ins)
+          case pao : PointArrayO =>
+            val ins = PTAInstance(new NormalType(pao.obj, pao.dimensions), context.copy)
+            pointsToMap.addInstance(InstanceSlot(ins), context.copy, ins)
+          case po : PointO =>
+            val ins = PTAInstance(new NormalType(po.obj), context.copy)
+            pointsToMap.addInstance(InstanceSlot(ins), context.copy, ins)
+          case pi : PointI =>
+            if(pi.invokeTyp.equals("static")){
+              worklist += rhsNode
+            }
+          case _ =>
+        }
+      case pi : Point with Invoke =>
+        pi match {
+          case vp : Point with Invoke with Dynamic =>
+            nodes += getNodeOrElse(vp.recvPCall, context.copy)
+            nodes += getNodeOrElse(vp.recvPReturn, context.copy)
+          case _ =>
+            val node = getNodeOrElse(pi, context.copy)
+            nodes += node
+            worklist += node
+        }
+        val args_Entry = pi.argPsCall
+        val args_Exit = pi.argPsReturn
+        args_Entry.foreach{
+          case (_, pa) =>
+            val argNode = getNodeOrElse(pa, context.copy)
+            nodes += argNode
+            argNode.setProperty(PARAM_NUM, pa.index)
+        }
+        args_Exit.foreach{
+          case (_, pa) =>
+            val argNode = getNodeOrElse(pa, context.copy)
+            nodes += argNode
+            argNode.setProperty(PARAM_NUM, pa.index)
+        }
+      case procP : Point with Proc =>
+        procP match {
+          case vp : Point with Proc with Virtual => 
+            nodes += getNodeOrElse(vp.thisPEntry, context.copy)
+            nodes += getNodeOrElse(vp.thisPExit, context.copy)
+          case _ =>
+        }
+        procP.retVar match {
+          case Some(rev) =>
+            nodes += getNodeOrElse(rev, context.copy)
+          case None =>
+        }
+        val params_Entry = procP.paramPsEntry
+        val params_Exit = procP.paramPsExit
+        params_Entry.foreach{
+          case (_, pa) => 
+            val paramNode = getNodeOrElse(pa, context.copy)
+            nodes += paramNode
+            paramNode.setProperty(PARAM_NUM, pa.index)
+        }
+        params_Exit.foreach{
+          case (_, pa) =>
+            val paramNode = getNodeOrElse(pa, context.copy)
+            nodes += paramNode
+            paramNode.setProperty(PARAM_NUM, pa.index)
+        }
+      case retP : PointRet =>
+        nodes += getNodeOrElse(retP, context.copy)
+      case _ =>
+    }
+    nodes
+  }
+  
+  def buildingEdges(map : MMap[EdgeType.Value, MMap[Point, MSet[Point]]], pSig : String, context : Context) : Set[Edge] = {
+    var edges : Set[Edge] = isetEmpty
+    map.foreach{
+      case(typ, edgeMap) =>
+        edgeMap.foreach{
+          case(src, dsts) =>
+            val s = context.copy
+            src match {
+              case lp : Point with Loc => s.setContext(pSig, lp.loc)
+              case _ => s.setContext(pSig, src.ownerSig)
+            }
+		        val srcNode = getNode(src, s)
+		        dsts.foreach{
+		          dst => 
+		            val t = context.copy
+		            dst match {
+                  case lp : Point with Loc => t.setContext(pSig, lp.loc)
+                  case _ => t.setContext(pSig, dst.ownerSig)
+                }
+		            val targetNode = getNode(dst, t)
+		            if(!graph.containsEdge(srcNode, targetNode))
+		              edges += addEdge(srcNode, targetNode, typ)
+		        }
+        }
+  	}
+    edges
+  }
+  
+  def breakPiEdges(pi : Point with Invoke, calleeAccessTyp : String, srcContext : Context) = {
+    pi match {
+      case vp : Point with Invoke with Dynamic =>
+        if(calleeAccessTyp != null && !calleeAccessTyp.contains("NATIVE")){
+          val srcNode = getNode(vp.recvPCall, srcContext.copy)
+          val targetNode = getNode(vp.recvPReturn, srcContext.copy)
+          if(hasEdge(srcNode, targetNode))
+            deleteEdge(srcNode, targetNode)
+        }
+      case _ =>
+    }
+    
+    pi.argPsCall foreach{
+      case (_, aCall) =>
+        pi.argPsReturn foreach{
+          case (_, aReturn) =>
+            if(aCall.index == aReturn.index){
+              val srcNode = getNode(aCall, srcContext.copy)
+              val targetNode = getNode(aReturn, srcContext.copy)
+              if(hasEdge(srcNode, targetNode))
+                deleteEdge(srcNode, targetNode)
+            }
+        }
+        
+    }
+  }
+  
+  private def connectCallEdges(met : Point with Proc, pi : Point with Invoke, srcContext : Context) ={
+    val targetContext = srcContext.copy
+    targetContext.setContext(met.procSig, met.ownerSig)
+    met.paramPsEntry.foreach{
+      case (_, paramp) => 
+        pi.argPsCall.foreach{
+          case (_, argp) =>
+            if(paramp.index == argp.index){
+              val srcNode = getNode(argp, srcContext.copy)
+              val targetNode = getNode(paramp, targetContext.copy)
+              worklist += srcNode
+              if(!graph.containsEdge(srcNode, targetNode))
+                addEdge(srcNode, targetNode, EdgeType.TRANSFER)
+            }
+          
+        }
+    }
+    met.paramPsExit.foreach{
+      case (_, paramp) =>
+        pi.argPsReturn.foreach{
+          case (_, argp) =>
+            if(paramp.index == argp.index){
+              val srcNode = getNode(argp, srcContext.copy)
+              val targetNode = getNode(paramp, targetContext.copy)
+              worklist += srcNode
+              if(!graph.containsEdge(srcNode, targetNode))
+                addEdge(srcNode, targetNode, EdgeType.TRANSFER)
+            }
+          
+        }
+    }
+    
+    met match {
+      case vp : Point with Proc with Virtual =>
+        assume(pi.isInstanceOf[PointI])
+        val srcNodeCall = getNode(pi.asInstanceOf[PointI].recvPCall, srcContext.copy)
+        val targetNodeEntry = getNode(vp.thisPEntry, targetContext.copy)
+        worklist += srcNodeCall
+        if(!graph.containsEdge(srcNodeCall, targetNodeEntry))
+          addEdge(srcNodeCall, targetNodeEntry, EdgeType.THIS_TRANSFER)
+        val srcNodeExit = getNode(vp.thisPExit, targetContext.copy)
+        val targetNodeReturn = getNode(pi.asInstanceOf[PointI].recvPReturn, srcContext.copy)
+        worklist += srcNodeExit
+        if(!graph.containsEdge(srcNodeExit, targetNodeReturn))
+          addEdge(srcNodeExit, targetNodeReturn, EdgeType.TRANSFER)
+      case _ =>
+    }
+    
+    met.retVar match {
+      case Some(retv) =>
+        val targetNode = getNode(pi, srcContext.copy)
+        val srcNode = getNode(retv, targetContext.copy)
+        worklist += srcNode
+        if(!graph.containsEdge(srcNode, targetNode))
+          addEdge(srcNode, targetNode, EdgeType.TRANSFER)
+      case None =>
+    }
+  }
+  
+  def extendGraph(met : Point with Proc, pi : Point with Invoke, srcContext : Context) = {
+    breakPiEdges(pi, met.accessTyp, srcContext)
+    connectCallEdges(met, pi, srcContext)
+  }
+  
+  def updateContext(callerContext : Context) = {
+    this.nodes.foreach{
+      node =>
+        node.getContext.updateContext(callerContext)
+    }
+  }
+  
+  /**
+   * This is the recv bar method in original algo
+   */
+  def recvInverse(n : Node) : Option[Point with Invoke] = {
+    n.point match{
+      case on : PointRecvCall => Some(on.getContainer)
+      case _ => None
+    }
+  }
+  
+  def getDirectCallee(pi : Point with Invoke) : JawaProcedure = CallHandler.getDirectCalleeProcedure(pi.sig)
+  
+  def getStaticCallee(pi : Point with Invoke) : JawaProcedure = CallHandler.getStaticCalleeProcedure(pi.sig)
+  
+  def getSuperCalleeSet(diff : ISet[Instance],
+	                 pi : Point with Invoke) : ISet[JawaProcedure] = {
+    val calleeSet : MSet[JawaProcedure] = msetEmpty
+    diff.foreach{
+      d =>
+        val p = CallHandler.getSuperCalleeProcedure(pi.sig)
+        calleeSet += p
+    }
+    calleeSet.toSet
+  }
+
+  def getVirtualCalleeSet(diff : ISet[Instance],
+	                 pi : Point with Invoke) : ISet[JawaProcedure] = {
+    val calleeSet : MSet[JawaProcedure] = msetEmpty
+    val subSig = Center.getSubSigFromProcSig(pi.sig)
+    diff.foreach{
+      d =>
+        val p = CallHandler.getVirtualCalleeProcedure(d.typ, subSig)
+        calleeSet += p
+    }
+    calleeSet.toSet
+  }
+  
+  def getNodeOrElse(p : Point, context : Context) : Node = {
+    if(!nodeExists(p, context)) addNode(p, context)
+    else getNode(p, context)
+  }
+  
+  def nodeExists(point : Point, context : Context) : Boolean = {
+    graph.containsVertex(newNode(point, context).asInstanceOf[Node])
+  }
+  
+  def addNode(point : Point, context : Context) : Node = {
+    val node = newNode(point, context).asInstanceOf[Node]
+    val n =
+      if (pool.contains(node)) pool(node)
+      else {
+        pl += (node -> node)
+        node
+      }
+    graph.addVertex(n)
+    n
+  }
+  
+  def getNode(point : Point, context : Context) : Node = pool(newNode(point, context))
+  
+  protected def newNode(point : Point, context : Context) = PtaNode(point, context)
+
+  override def toString = {
+      val sb = new StringBuilder("PAG\n")
+
+      for (n <- nodes)
+        for (m <- successors(n)) {
+          for (e <- getEdges(n, m)) {
+            sb.append("%s -> %s\n".format(n, m))
+          }
+        }
+
+      sb.append("\n")
+
+      sb.toString
+  }
+}
+
+final case class PtaNode(point : Point, context : Context) extends InterProceduralNode(context) {
+  def getSlots(ptaresult : PTAResult) : ISet[Slot] = {
+    point match {
+      case pao : PointArrayO =>
+        Set(InstanceSlot(PTAInstance(new NormalType(pao.obj, pao.dimensions), context.copy)))
+      case po : PointO =>
+        Set(InstanceSlot(PTAInstance(new NormalType(po.obj), context.copy)))
+      case pso : PointStringO =>
+        Set(InstanceSlot(PTAConcreteStringInstance(pso.text, context.copy)))
+      case gla : Point with Loc with Global with Array =>
+        val pts = ptaresult.pointsToSet(VarSlot(gla.globalSig), context)
+        pts.map{
+          ins =>
+            ArraySlot(ins)
+        }
+      case glo : Point with Loc with Global =>
+        Set(VarSlot(glo.globalSig))
+      case arr : PointArrayL =>
+        val pts = ptaresult.pointsToSet(VarSlot(arr.arrayname), context)
+        pts.map{
+          ins =>
+            ArraySlot(ins)
+        }
+      case arr : PointArrayR =>
+        val pts = ptaresult.pointsToSet(VarSlot(arr.arrayname), context)
+        pts.map{
+          ins =>
+            ArraySlot(ins)
+        }
+      case fie : Point with Loc with Field =>
+        val pts = ptaresult.pointsToSet(VarSlot(fie.baseP.baseName), context)
+        pts.map{
+          ins =>
+            FieldSlot(ins, fie.fieldName)
+        }
+      case bas : Point with Loc with Base =>
+        Set(VarSlot(bas.baseName))
+      case pl : PointL =>
+        Set(VarSlot(pl.varname))
+      case pr : PointR =>
+        Set(VarSlot(pr.varname))
+      case pla : Point with Loc with Arg =>
+        Set(VarSlot(pla.argName))
+      case pop : Point with Param =>
+        Set(VarSlot(pop.paramName))
+      case inp : Point with Invoke =>
+        Set(InvokeSlot(inp.sig, inp.invokeTyp))
+      case p : PointRet =>
+        Set(VarSlot(p.retname))
+      case p : PointProcRet =>
+        Set(VarSlot("ret"))
+      case _ => throw new RuntimeException("No slot for such pta node: " + point + "@" + context)
+    }
+  }
+}

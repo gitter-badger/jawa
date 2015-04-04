@@ -95,7 +95,7 @@ class JawaRecord extends ResolveLevel{
    * true: is phantom, which means it's not available in our code repo
    */
   
-  protected var phantom : Boolean = false
+  protected var unknown : Boolean = false
   
   /**
    * didn't resolve this extends-relation list. It's a set of record names.
@@ -123,13 +123,13 @@ class JawaRecord extends ResolveLevel{
   
   def addNeedToResolveExtends(recNames : Set[String]) = this.needToResolveExtends ++= recNames
   
-  def setPhantom = this.phantom = true
+  def setUnknown = this.unknown = true
   
   /**
    * return true if this record is phantom record
    */
   
-  def isPhantom = this.phantom
+  def isUnknown = this.unknown
   
   /**
    * when you construct a amandroid record instance, call this init function first
@@ -394,7 +394,12 @@ class JawaRecord extends ResolveLevel{
 	  val fopt = getFields.find(_.getName == name)
 	  fopt match{
 	    case Some(f) => f
-	    case None => throw new RuntimeException("No field " + name + " in record " + getName)
+	    case None => 
+        if(isUnknown){
+          val f = new JawaField().init(name, StringFormConverter.getTypeFromName(Center.DEFAULT_TOPLEVEL_OBJECT), AccessFlag.getAccessFlags("PUBLIC"))
+          addField(f)
+          f
+        } else throw new RuntimeException("No field " + name + " in record " + getName)
 	  }
 	}
 	
@@ -404,11 +409,7 @@ class JawaRecord extends ResolveLevel{
 	
 	def getField(sig : String) : JawaField = {
 	  val fieldName = StringFormConverter.getFieldNameFromFieldSignature(sig)
-	  val fopt = getFields.find(_.getName == fieldName)
-	  fopt match{
-	    case Some(f) => f
-	    case None => throw new RuntimeException("No field signature " + sig + " in record " + getName)
-	  }
+	  getFieldByName(fieldName)
 	}
 	
 	/**
@@ -416,8 +417,16 @@ class JawaRecord extends ResolveLevel{
 	 */
 	
 	def getProcedure(subSig : String) : JawaProcedure = {
-	  if(!declaresProcedure(subSig)) throw new RuntimeException("No procedure " + subSig + " in record " + getName)
-	  else this.subSigToProcedures(subSig)
+	  tryGetProcedure(subSig) match{
+      case Some(p) => p
+      case None => 
+        if(isUnknown){
+          val sig = StringFormConverter.getSigFromOwnerAndProcSubSig(getName, subSig)
+          val proc = new JawaProcedure().init(sig)
+          addProcedure(proc)
+          proc
+        } else throw new RuntimeException("No procedure " + subSig + " in record " + getName)
+    }
 	}
 	
 	/**
@@ -638,6 +647,7 @@ class JawaRecord extends ResolveLevel{
 	 */
 	
 	def addInterface(i : JawaRecord) = {
+    if(!i.isInterface) throw new RuntimeException("This is not an interface:" + i)
 	  this.interfaces += i
 	}
 	
@@ -647,7 +657,7 @@ class JawaRecord extends ResolveLevel{
 	
 	def addInterfaceCheck(i : JawaRecord) = {
 	  if(implementsInterface(i.getName)) throw new RuntimeException("already implements this interface: " + i.getName)
-	  this.interfaces += i
+	  addInterface(i)
 	}
 	
 	/**
@@ -655,6 +665,8 @@ class JawaRecord extends ResolveLevel{
 	 */
 	
 	def removeInterface(i : JawaRecord) = {
+    if(!i.isInterface) throw new RuntimeException("This is not an interface:" + i)
+    this.interfaces += i
 	  if(implementsInterface(i.getName)) throw new RuntimeException("no such interface: " + i.getName)
 	  this.interfaces -= i
 	}
@@ -802,21 +814,37 @@ class JawaRecord extends ResolveLevel{
 	}
 	
 	/**
-   * is this record  a library record
+   * is this record  a framework record
    */
   
-  def isLibraryRecord : Boolean = Center.getLibraryRecords.contains(this)
+  def isFrameworkRecord : Boolean = Center.getFrameworkRecords.contains(this)
+  
+  /**
+   * is this record  a third party lib record
+   */
+  
+  def isThirdPartyLibRecord : Boolean = Center.getThirdPartyLibRecords.contains(this)
   
   
   /**
-   * set this record as a library record
+   * set this record as a framework record
    */
   
-  def setLibraryRecord = {
+  def setFrameworkRecord = {
 	  val c = Center.getContainingSet(this)
 	  if(c != null) Center.removeFromContainingSet(this)
-	  Center.addLibraryRecord(this)
+	  Center.addFrameworkRecord(this)
 	}
+  
+  /**
+   * set this record as a third party lib record
+   */
+  
+  def setThirdPartyLibRecord = {
+    val c = Center.getContainingSet(this)
+    if(c != null) Center.removeFromContainingSet(this)
+    Center.addThirdPartyLibRecord(this)
+  }
   
   /**
    * whether this record is a java library class

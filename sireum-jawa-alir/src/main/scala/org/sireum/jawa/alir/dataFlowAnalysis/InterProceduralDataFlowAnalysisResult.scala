@@ -5,18 +5,17 @@ are made available under the terms of the Eclipse Public License v1.0
 which accompanies this distribution, and is available at              
 http://www.eclipse.org/legal/epl-v10.html                             
 */
-package org.sireum.jawa
+package org.sireum.jawa.alir.dataFlowAnalysis
 
 import org.sireum.util.ISet
+import org.sireum.jawa.alir.controlFlowGraph.ICFGNode
 
 /**
- * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
- * @author <a href="mailto:sroy@k-state.edu">Sankardas Roy</a>
- */ 
-trait ScopeManager {
-	/**
-	 * return true if given record needs to be bypassed
-	 */
-  def shouldBypass(rec : JawaRecord) : Boolean
-  
+ * Provide an Interface to let the developer get data facts corresponding
+ * to each statement.
+ * 
+ * @author Fengguo Wei
+ */
+trait InterProceduralDataFlowAnalysisResult[LatticeElement] {
+  def entrySet : ICFGNode => ISet[LatticeElement]
 }

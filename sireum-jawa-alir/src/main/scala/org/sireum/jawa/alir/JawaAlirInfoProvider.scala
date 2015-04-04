@@ -30,6 +30,7 @@ import org.sireum.jawa.Transform
 import org.sireum.pilar.ast.NameExp
 import org.sireum.jawa.alir.reachingDefinitionAnalysis.JawaDefRef
 import org.sireum.jawa.alir.reachingDefinitionAnalysis.JawaVarAccesses
+import org.sireum.jawa.alir.pta.ClassInstance
 
 /**
  * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
@@ -192,7 +193,7 @@ object JawaAlirInfoProvider {
   }
   
   def getClassInstance(r : JawaRecord) : ClassInstance = {
-    val mainContext = new Context(GlobalConfig.CG_CONTEXT_K)
+    val mainContext = new Context(GlobalConfig.ICFG_CONTEXT_K)
     mainContext.setContext("Center", "L0000")
     ClassInstance(r.getName, mainContext)
   }
