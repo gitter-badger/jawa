@@ -28,7 +28,15 @@ class PTAResult {
   def addInstances(s : Slot, context : Context, is : ISet[Instance]) = ptMap.getOrElseUpdate(context.copy, mmapEmpty).getOrElseUpdate(s, msetEmpty) ++= is
   def removeInstance(s : Slot, context : Context, i : Instance) = ptMap.getOrElseUpdate(context.copy, mmapEmpty).getOrElseUpdate(s, msetEmpty) -= i
   def removeInstances(s : Slot, context : Context, is : ISet[Instance]) = ptMap.getOrElseUpdate(context.copy, mmapEmpty).getOrElseUpdate(s, msetEmpty) --= is
-  
+  def merge(ptaRes: PTAResult) = {
+    ptaRes.pointsToMap.foreach{
+      case (context, map) =>
+        map.foreach{
+          case (s, insts) =>
+            addInstances(s, context, insts)
+        }
+    }
+  }
   def pointsToSet(s : Slot, context : Context) : ISet[Instance] = {
     ptMap.getOrElse(context, mmapEmpty).getOrElse(s, msetEmpty).toSet
   }
