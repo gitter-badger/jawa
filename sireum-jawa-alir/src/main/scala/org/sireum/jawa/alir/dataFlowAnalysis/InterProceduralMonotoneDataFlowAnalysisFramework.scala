@@ -51,19 +51,81 @@ trait InterProceduralMonotoneDataFlowAnalysisResultExtended[LatticeElement] exte
 }
 
 class ExtraInfo[LatticeElement]{  // this represents component level pool
-  var holeNodes: ISet[ICFGNode] = Set()
-  var staticFacts: ISet[LatticeElement] = Set()
-  var sentIntentFacts: IMap[JawaProcedure, ISet[LatticeElement]] = imapEmpty  // a JawaProcedure is one target of an intent
-  def getHoleNodes(): ISet[ICFGNode] = holeNodes
-  def getStaticFacts(): ISet[LatticeElement] = staticFacts
-  def getIntentFacts:IMap[JawaProcedure, ISet[LatticeElement]] = sentIntentFacts
+  var holeNodes: MSet[ICFGNode] = msetEmpty
+  var staticFacts: MSet[LatticeElement] = msetEmpty
+  var sentIntentFacts: MMap[JawaProcedure, ISet[LatticeElement]] = mmapEmpty  
+       // Note: we do not store "sent intent" facts par se. Instead, we store tuples like (destinationComp, intentMappedFacts) 
+       // in the "sentIntentFacts" map, where a JawaProcedure is one target of an intent. 
+       // One intent can cause multiple entries (if multiple destinations) in the above map.
+  def getHoleNodes(): ISet[ICFGNode] = holeNodes.toSet
+  def getStaticFacts(): ISet[LatticeElement] = staticFacts.toSet
+  def getIntentFacts:IMap[JawaProcedure, ISet[LatticeElement]] = sentIntentFacts.toMap
   def merge(e:ExtraInfo[LatticeElement]) = {
-    staticFacts ++= e.staticFacts // note that we do not merge holeNodes across components as that does not make sense
-    sentIntentFacts ++= e.sentIntentFacts 
+    staticFacts ++= e.getStaticFacts() // note that we do not merge holeNodes across components
+    e.getIntentFacts.foreach{
+          case (x, y) =>
+            if(!sentIntentFacts.contains(x))
+              sentIntentFacts(x) = y
+            else
+              if(!y.subsetOf(sentIntentFacts(x)))
+                   sentIntentFacts(x) ++= y
+    } 
     this
   }
-  def diffStaticFacts(e:ExtraInfo[LatticeElement]): ISet[LatticeElement] = (staticFacts -- e.staticFacts) ++ (e.staticFacts -- staticFacts)
-  def diffIntentFacts(e:ExtraInfo[LatticeElement]):IMap[JawaProcedure, ISet[LatticeElement]] = (sentIntentFacts.toSet diff e.sentIntentFacts.toSet).toMap
+  def mergeStaticFacts(e:ExtraInfo[LatticeElement]) = {
+    staticFacts ++= e.getStaticFacts() // note that we do not merge holeNodes across components
+    this
+  }
+  def mergeIntentFacts(e:ExtraInfo[LatticeElement]) = {
+    e.getIntentFacts.foreach{
+          case (x, y) =>
+            if(!sentIntentFacts.contains(x))
+              sentIntentFacts(x) = y
+            else
+              if(!y.subsetOf(sentIntentFacts(x)))
+                   sentIntentFacts(x) ++= y
+    } 
+    this
+  }
+  def diffStaticFacts(e:ExtraInfo[LatticeElement]): ISet[LatticeElement] = {
+    var temp = staticFacts -- e.getStaticFacts()
+    temp ++=(e.getStaticFacts() -- staticFacts)
+    temp.toSet
+  }
+  def diffIntentFacts(e:ExtraInfo[LatticeElement]):IMap[JawaProcedure, ISet[LatticeElement]] = (sentIntentFacts.toSet diff e.getIntentFacts.toSet).toMap
+  def hasLessStaticFactsThan(another:ExtraInfo[LatticeElement]) = {
+    var status = false
+    another.getStaticFacts().foreach { 
+      x =>
+        if(!staticFacts.contains(x))
+        status = true
+    }
+    status
+  }
+  def hasLessIntentFactsThan(another:ExtraInfo[LatticeElement]) = {
+    var status = false
+    another.getIntentFacts.foreach{
+            case (x, y) =>
+              if(!sentIntentFacts.contains(x))
+                status = true
+              else
+                if(!y.subsetOf(sentIntentFacts(x)))
+                    status = true
+    }
+    status
+  }
+  def findIntentDestComp(another:ExtraInfo[LatticeElement]) = {
+    var dests: ISet[JawaProcedure] = Set()    
+    another.getIntentFacts.foreach{
+          case (x, y) =>
+            if(!sentIntentFacts.contains(x))
+              dests += x
+            else
+              if(!y.subsetOf(sentIntentFacts(x)))
+                  dests += x 
+    }
+    dests
+  }
   def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
       kill:InterProceduralMonotonicFunction[LatticeElement], 
       callr : CallResolver[LatticeElement]):Unit = {
