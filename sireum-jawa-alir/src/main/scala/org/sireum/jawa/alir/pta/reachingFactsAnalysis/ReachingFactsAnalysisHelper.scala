@@ -606,10 +606,8 @@ object ReachingFactsAnalysisHelper {
   if(isObjectTypeRegAssignment(a))
   {
     val rhss = PilarAstHelper.getRHSs(a) 
-    var i = -1
     rhss.foreach{
       rhs=>
-        i += 1
         rhs match{
           case ne : NameExp =>
             val slot = VarSlot(ne.name.name)
@@ -627,10 +625,8 @@ object ReachingFactsAnalysisHelper {
     if(isObjectTypeRegAssignment(a))
     {
      val lhss = PilarAstHelper.getLHSs(a)
-     var i = -1
      lhss.foreach{
       key=>
-        i += 1
         key match{
           case ne : NameExp =>
             val vs = VarSlot(ne.name.name)

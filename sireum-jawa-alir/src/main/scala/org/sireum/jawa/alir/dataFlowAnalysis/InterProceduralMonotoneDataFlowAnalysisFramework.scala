@@ -129,9 +129,9 @@ class ExtraInfo[LatticeElement]{  // this represents component level pool
   def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
       kill:InterProceduralMonotonicFunction[LatticeElement], 
       callr : CallResolver[LatticeElement]):Unit = {
-    gen.setProperty("holeNodes", holeNodes)
-    gen.setProperty("globalFacts", staticFacts)
-    callr.setProperty("sentIntentFacts", sentIntentFacts)
+    gen.setProperty("holeNodes", getHoleNodes())
+    gen.setProperty("globalFacts", getStaticFacts())
+    callr.setProperty("sentIntentFacts", getIntentFacts)
   }
   
   def setInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
