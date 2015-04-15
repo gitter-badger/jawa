@@ -36,6 +36,7 @@ import org.sireum.jawa.alir.pta.VarSlot
 import org.sireum.jawa.alir.pta.FieldSlot
 import org.sireum.jawa.alir.pta.ArraySlot
 import org.sireum.jawa.alir.dataFlowAnalysis.InterProceduralDataFlowGraph
+import java.io.File
 
 /**
  * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
@@ -126,7 +127,13 @@ object InterproceduralDataDependenceAnalysis {
 	  }
 	  
 	  msg_normal(TITLE, "[IDDG building done!]")
-//	  iddg.toDot(new PrintWriter(System.out))
+    val outputDir = "/Users/sankar/Desktop" + "/DDGoutput"            
+    val dotDirFile = new File(outputDir + "/" + "toDot")
+    if(!dotDirFile.exists()) dotDirFile.mkdirs()           
+    val out = new PrintWriter(dotDirFile.getAbsolutePath + "/"+ "iddg.dot")
+    iddg.toDot(out)
+    out.close()
+	  //iddg.toDot(new PrintWriter(System.out))
 	  new Iddi(iddg)
 	}
   
