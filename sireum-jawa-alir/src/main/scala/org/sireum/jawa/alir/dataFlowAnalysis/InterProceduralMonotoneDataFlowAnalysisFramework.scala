@@ -51,9 +51,9 @@ trait InterProceduralMonotoneDataFlowAnalysisResultExtended[LatticeElement] exte
 }
 
 class ExtraInfo[LatticeElement]{  // this represents component level pool
-  var holeNodes: MSet[ICFGNode] = msetEmpty
-  var staticFacts: MSet[LatticeElement] = msetEmpty
-  var sentIntentFacts: MMap[JawaProcedure, ISet[LatticeElement]] = mmapEmpty  
+  private var holeNodes: MSet[ICFGNode] = msetEmpty
+  private var staticFacts: MSet[LatticeElement] = msetEmpty
+  private var sentIntentFacts: MMap[JawaProcedure, ISet[LatticeElement]] = mmapEmpty  
        // Note: we do not store "sent intent" facts par se. Instead, we store tuples like (destinationComp, intentMappedFacts) 
        // in the "sentIntentFacts" map, where a JawaProcedure is one target of an intent. 
        // One intent can cause multiple entries (if multiple destinations) in the above map.
