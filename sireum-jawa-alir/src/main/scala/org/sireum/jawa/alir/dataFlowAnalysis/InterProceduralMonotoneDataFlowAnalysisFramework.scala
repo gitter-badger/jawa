@@ -42,27 +42,38 @@ trait InterProceduralMonotoneDataFlowAnalysisResultExtended[LatticeElement] exte
   val extraInfo:ExtraInfo[LatticeElement] = new ExtraInfo[LatticeElement]
   def getExtraInfo = extraInfo
   def updateWorklist = extraInfo.getHoleNodes()
-  def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
+  def getInfluenceTo(gen:InterProceduralMonotonicFunction[LatticeElement], 
       kill:InterProceduralMonotonicFunction[LatticeElement], 
-      callr: CallResolver[LatticeElement]) = extraInfo.getInfluence(gen, kill, callr)
-  def setInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
+      callr: CallResolver[LatticeElement]) = extraInfo.getInfluenceTo(gen, kill, callr)
+  def setInfluenceFrom(gen:InterProceduralMonotonicFunction[LatticeElement], 
       kill:InterProceduralMonotonicFunction[LatticeElement], 
-      callr: CallResolver[LatticeElement]) = extraInfo.setInfluence(gen, kill, callr)     
+      callr: CallResolver[LatticeElement]) = extraInfo.setInfluenceFrom(gen, kill, callr)     
 }
 
 class ExtraInfo[LatticeElement]{  // this represents component level pool
   private var holeNodes: MSet[ICFGNode] = msetEmpty
   private var staticFacts: MSet[LatticeElement] = msetEmpty
-  private var sentIntentFacts: MMap[JawaProcedure, ISet[LatticeElement]] = mmapEmpty  
+  private var sentIntentFacts: MMap[JawaProcedure, ISet[LatticeElement]] = mmapEmpty
        // Note: we do not store "sent intent" facts par se. Instead, we store tuples like (destinationComp, intentMappedFacts) 
        // in the "sentIntentFacts" map, where a JawaProcedure is one target of an intent. 
        // One intent can cause multiple entries (if multiple destinations) in the above map.
+  private val rpcData = new RpcData[LatticeElement]
   def getHoleNodes(): ISet[ICFGNode] = holeNodes.toSet
   def getStaticFacts(): ISet[LatticeElement] = staticFacts.toSet
   def getIntentFacts:IMap[JawaProcedure, ISet[LatticeElement]] = sentIntentFacts.toMap
-  def merge(e:ExtraInfo[LatticeElement]) = {
-    staticFacts ++= e.getStaticFacts() // note that we do not merge holeNodes across components
-    e.getIntentFacts.foreach{
+  def getRpcData = rpcData
+  def merge(another:ExtraInfo[LatticeElement]) = {
+    mergeStaticFacts(another) 
+    mergeIntentFacts(another)
+    mergeRpcData(another)
+    this
+  }
+  def mergeStaticFacts(another:ExtraInfo[LatticeElement]) = {
+    staticFacts ++= another.getStaticFacts() // note that we do not merge holeNodes across components
+    this
+  }
+  def mergeIntentFacts(another:ExtraInfo[LatticeElement]) = {
+    another.getIntentFacts.foreach{
           case (x, y) =>
             if(!sentIntentFacts.contains(x))
               sentIntentFacts(x) = y
@@ -72,27 +83,16 @@ class ExtraInfo[LatticeElement]{  // this represents component level pool
     } 
     this
   }
-  def mergeStaticFacts(e:ExtraInfo[LatticeElement]) = {
-    staticFacts ++= e.getStaticFacts() // note that we do not merge holeNodes across components
+  def mergeRpcData(another:ExtraInfo[LatticeElement]) = {
+    this.rpcData.merge(another.rpcData)
     this
   }
-  def mergeIntentFacts(e:ExtraInfo[LatticeElement]) = {
-    e.getIntentFacts.foreach{
-          case (x, y) =>
-            if(!sentIntentFacts.contains(x))
-              sentIntentFacts(x) = y
-            else
-              if(!y.subsetOf(sentIntentFacts(x)))
-                   sentIntentFacts(x) ++= y
-    } 
-    this
-  }
-  def diffStaticFacts(e:ExtraInfo[LatticeElement]): ISet[LatticeElement] = {
-    var temp = staticFacts -- e.getStaticFacts()
-    temp ++=(e.getStaticFacts() -- staticFacts)
+  def diffStaticFacts(another:ExtraInfo[LatticeElement]): ISet[LatticeElement] = {
+    var temp = staticFacts -- another.getStaticFacts()
+    temp ++=(another.getStaticFacts() -- staticFacts)
     temp.toSet
   }
-  def diffIntentFacts(e:ExtraInfo[LatticeElement]):IMap[JawaProcedure, ISet[LatticeElement]] = (sentIntentFacts.toSet diff e.getIntentFacts.toSet).toMap
+  def diffIntentFacts(another:ExtraInfo[LatticeElement]):IMap[JawaProcedure, ISet[LatticeElement]] = (sentIntentFacts.toSet diff another.getIntentFacts.toSet).toMap
   def hasLessStaticFactsThan(another:ExtraInfo[LatticeElement]) = {
     var status = false
     another.getStaticFacts().foreach { 
@@ -126,24 +126,57 @@ class ExtraInfo[LatticeElement]{  // this represents component level pool
     }
     dests
   }
-  def getInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
+   def hasLessRpcFactsThan(another:ExtraInfo[LatticeElement]) = {
+    var status = false
+    another.getRpcData.callFacts.foreach { 
+      x =>
+        if(!getRpcData.callFacts.contains(x))
+        status = true
+    }
+    another.getRpcData.retFacts.foreach { 
+      x =>
+        if(!getRpcData.retFacts.contains(x))
+        status = true
+    }
+    status
+  }
+  def getInfluenceTo(gen:InterProceduralMonotonicFunction[LatticeElement], 
       kill:InterProceduralMonotonicFunction[LatticeElement], 
-      callr : CallResolver[LatticeElement]):Unit = {
+      callr : CallResolver[LatticeElement]): Unit = {
     gen.setProperty("holeNodes", getHoleNodes())
     gen.setProperty("globalFacts", getStaticFacts())
     callr.setProperty("sentIntentFacts", getIntentFacts)
+    callr.setProperty("rpcData", getRpcData)
   }
   
-  def setInfluence(gen:InterProceduralMonotonicFunction[LatticeElement], 
+  def setInfluenceFrom(gen:InterProceduralMonotonicFunction[LatticeElement], 
       kill:InterProceduralMonotonicFunction[LatticeElement], 
-      callr : CallResolver[LatticeElement]):Unit = {
+      callr : CallResolver[LatticeElement]): Unit = {
     holeNodes ++= gen.getPropertyOrElse("holeNodes", Set())
     staticFacts ++= gen.getPropertyOrElse("globalFacts", Set())
     sentIntentFacts ++= callr.getPropertyOrElse("sentIntentFacts", Map())
-  }
-  
+    rpcData.merge(callr.getPropertyOrElse("rpcData", new RpcData [LatticeElement]))
+  }  
 }
 
+class RpcData [LatticeElement]{  // this represents caller-callee-facts for a RPC method
+  var calleeProc: JawaProcedure = null
+  var callerCallNode: ICFGCallNode = null
+  var callerRetNode: ICFGReturnNode = null
+  var callFacts: MSet[LatticeElement] = msetEmpty[LatticeElement]
+  var retFacts: MSet[LatticeElement] = msetEmpty[LatticeElement]
+  def merge(another:RpcData[LatticeElement]) = {
+    if(another != null){
+      if(callerCallNode == null && another.callerCallNode != null)
+        callerCallNode = another.callerCallNode
+      if(callerRetNode == null && another.callerRetNode != null)
+        callerRetNode = another.callerRetNode
+      this.callFacts ++=another.callFacts
+      this.retFacts ++=another.retFacts
+    }
+    this
+  }
+}
 
 /**
  * @author <a href="mailto:fgwei@k-state.edu">Fengguo Wei</a>
@@ -1096,8 +1129,8 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
     val workList = mlistEmpty[N]
     workList += flow.entryNode
     if(existingResult != null){
-      workList ++= existingResult.updateWorklist
-      existingResult.getInfluence(gen, kill, callr)
+      //workList ++= existingResult.updateWorklist // later we will uncomment it
+      existingResult.getInfluenceTo(gen, kill, callr)
     }
     while(!workList.isEmpty){      
       while (!workList.isEmpty) {        
@@ -1137,7 +1170,7 @@ object InterProceduralMonotoneDataFlowAnalysisFrameworkExtended {
           newnodes
       }.reduce(iunion[N])
     }
-    imdaf.setInfluence(gen, kill, callr)
+    imdaf.setInfluenceFrom(gen, kill, callr)
     imdaf
     
   }
