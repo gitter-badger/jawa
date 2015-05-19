@@ -114,6 +114,9 @@ class ExtraInfo[LatticeElement]{  // this represents component level pool
     }
     status
   }
+  def hasLessRpcFactsThan(another:ExtraInfo[LatticeElement]) = {
+    getRpcData.hasLessFactsThan(another.getRpcData)
+  }
   def findIntentDestComp(another:ExtraInfo[LatticeElement]) = {
     var dests: ISet[JawaProcedure] = Set()    
     another.getIntentFacts.foreach{
@@ -126,20 +129,6 @@ class ExtraInfo[LatticeElement]{  // this represents component level pool
     }
     dests
   }
-   def hasLessRpcFactsThan(another:ExtraInfo[LatticeElement]) = {
-    var status = false
-    another.getRpcData.callFacts.foreach { 
-      x =>
-        if(!getRpcData.callFacts.contains(x))
-        status = true
-    }
-    another.getRpcData.retFacts.foreach { 
-      x =>
-        if(!getRpcData.retFacts.contains(x))
-        status = true
-    }
-    status
-  }
   def getInfluenceTo(gen:InterProceduralMonotonicFunction[LatticeElement], 
       kill:InterProceduralMonotonicFunction[LatticeElement], 
       callr : CallResolver[LatticeElement]): Unit = {
@@ -147,8 +136,7 @@ class ExtraInfo[LatticeElement]{  // this represents component level pool
     gen.setProperty("globalFacts", getStaticFacts())
     callr.setProperty("sentIntentFacts", getIntentFacts)
     callr.setProperty("rpcData", getRpcData)
-  }
-  
+  }  
   def setInfluenceFrom(gen:InterProceduralMonotonicFunction[LatticeElement], 
       kill:InterProceduralMonotonicFunction[LatticeElement], 
       callr : CallResolver[LatticeElement]): Unit = {
@@ -160,22 +148,77 @@ class ExtraInfo[LatticeElement]{  // this represents component level pool
 }
 
 class RpcData [LatticeElement]{  // this represents caller-callee-facts for a RPC method
-  var calleeProc: JawaProcedure = null
-  var callerCallNode: ICFGCallNode = null
-  var callerRetNode: ICFGReturnNode = null
-  var callFacts: MSet[LatticeElement] = msetEmpty[LatticeElement]
-  var retFacts: MSet[LatticeElement] = msetEmpty[LatticeElement]
+private var calleeCallers:MMap[JawaProcedure, Set[RpcCaller[LatticeElement]]] = mmapEmpty
+def getCalleeCallers:Map[JawaProcedure, Set[RpcCaller[LatticeElement]]] = {
+ calleeCallers.toMap 
+}
+def getCallersByCallee(callee: JawaProcedure):Set[RpcCaller[LatticeElement]] = {
+  calleeCallers.getOrElse(callee, isetEmpty)
+}
+def init(callee: JawaProcedure, caller: RpcCaller [LatticeElement]) = {
+  calleeCallers(callee)= Set(caller)
+}
+def add(callee: JawaProcedure, caller: RpcCaller [LatticeElement]) ={
+  val temp = new RpcData[LatticeElement]
+  temp.init(callee,caller)
+  merge(temp)
+  this
+}
   def merge(another:RpcData[LatticeElement]) = {
-    if(another != null){
-      if(callerCallNode == null && another.callerCallNode != null)
-        callerCallNode = another.callerCallNode
-      if(callerRetNode == null && another.callerRetNode != null)
-        callerRetNode = another.callerRetNode
-      this.callFacts ++=another.callFacts
-      this.retFacts ++=another.retFacts
+    another.getCalleeCallers.keys.foreach { 
+      callee =>
+        if(calleeCallers.contains(callee)){
+          val myCallers = calleeCallers(callee)
+          val otherCallers = another.getCalleeCallers(callee)
+          myCallers.map { 
+            mc =>
+              otherCallers.map { 
+                oc => 
+                  if(oc.equals(mc)) {
+                    mc.callFacts ++=oc.callFacts
+                    mc.retFacts ++=oc.retFacts
+                  }
+              }                  
+          }
+          val diffCallers = otherCallers.diff(myCallers)
+          val totalCallers = myCallers ++ diffCallers
+          calleeCallers.update(callee, totalCallers)
+        }            
+        else
+          calleeCallers.update(callee, another.getCalleeCallers(callee))
     }
     this
   }
+  def hasLessFactsThan(another:RpcData[LatticeElement]) = {
+    var result = false
+    another.getCalleeCallers.keys.foreach { 
+    callee =>
+      if(calleeCallers.contains(callee)){
+        val myCallers = calleeCallers(callee)
+        val otherCallers = another.getCalleeCallers(callee)
+        myCallers.map { 
+          mc =>
+            otherCallers.map { 
+              oc => 
+                if(oc.equals(mc)) {
+                  oc.callFacts.map { x => if(!mc.callFacts.contains(x)) result = true}
+                  oc.retFacts.map { x => if(!mc.retFacts.contains(x)) result = true} 
+                }
+            }                  
+        }
+        val diffCallers = otherCallers.diff(myCallers)
+        if(!diffCallers.isEmpty)
+          result = true
+      }            
+      else
+        result = true
+    }
+    result
+  }
+}
+case class RpcCaller [LatticeElement](callerCallNode: ICFGCallNode, callerRetNode: ICFGReturnNode){
+  var callFacts: MSet[LatticeElement] = msetEmpty[LatticeElement]
+  var retFacts: MSet[LatticeElement] = msetEmpty[LatticeElement]
 }
 
 /**
