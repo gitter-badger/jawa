@@ -155,6 +155,9 @@ def getCalleeCallers:Map[JawaProcedure, Set[RpcCaller[LatticeElement]]] = {
 def getCallersByCallee(callee: JawaProcedure):Set[RpcCaller[LatticeElement]] = {
   calleeCallers.getOrElse(callee, isetEmpty)
 }
+def getCallers: Set[RpcCaller[LatticeElement]] = {
+  calleeCallers.map(f => f._2).foldLeft(Set[RpcCaller[LatticeElement]]())(_ union _)
+}
 def init(callee: JawaProcedure, caller: RpcCaller [LatticeElement]) = {
   calleeCallers(callee)= Set(caller)
 }
@@ -217,8 +220,8 @@ def add(callee: JawaProcedure, caller: RpcCaller [LatticeElement]) ={
   }
 }
 case class RpcCaller [LatticeElement](callerCallNode: ICFGCallNode, callerRetNode: ICFGReturnNode){
-  var callFacts: MSet[LatticeElement] = msetEmpty[LatticeElement]
-  var retFacts: MSet[LatticeElement] = msetEmpty[LatticeElement]
+  val callFacts: MSet[LatticeElement] = msetEmpty[LatticeElement]
+  val retFacts: MSet[LatticeElement] = msetEmpty[LatticeElement]
 }
 
 /**
